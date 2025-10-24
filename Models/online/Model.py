@@ -1,5 +1,5 @@
 import torch
-from core.net_config import Config
+from ...net_config import Config
 import torch.nn as nn
 
 class Model(nn.Module):

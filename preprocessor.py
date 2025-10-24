@@ -95,12 +95,8 @@ class Preprocessor():
             return fragments
         
         # Fragment
-        hop_size = int(self.config.data.preprocess.fragment_size * self.config.data.preprocess.fragment_hop)
-        for start in range(0, len(features), hop_size):
+        for start in range(0, len(features), fragment_size):
             fragment = features[start:start+fragment_size]
-            if len(fragment) < fragment_size:
-                pad_width = fragment_size - len(fragment)
-                fragment = np.pad(fragment, ((0, pad_width), (0, 0)), mode='constant')
             fragments.append(torch.tensor(fragment, dtype=torch.float64))
         
         return fragments

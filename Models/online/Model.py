@@ -1,5 +1,5 @@
 import torch
-from app.core.net_config import Config
+from core.net_config import Config
 import torch.nn as nn
 
 class Model(nn.Module):
@@ -31,13 +31,13 @@ class Model(nn.Module):
         self.fc = nn.Linear(self.hidden_size*self.num_directions, self.output_features)
 
     def forward(self, x):
-        # x : [batch_size * timestep * feature_size]
-        x = x.unsqueeze(1) # [batch_size * num_channels=1 * timestep * feature_size]
+        # [batch_size, timestep,feature_size]
+        x = x.unsqueeze(1) # [batch_size, num_channels=1, timestep, feature_size]
         x = self.batch_norm(x)
 
         conv = self.relu(self.conv1(x))
-        conv = self.relu(self.conv2(conv))
-        conv = conv.squeeze(3).permute(0,2,1)
+        conv = self.relu(self.conv2(conv)) # [batch, out_feature_maps=out_channels, in_feature]
+        conv = conv.squeeze(3).permute(0,2,1) # [batch, timestep, feature]
 
         h0 = torch.zeros(self.num_layers * self.num_directions, conv.size(0), self.hidden_size).to(self.device)
         gru, h = self.gru(conv, h0)

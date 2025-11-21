@@ -1,7 +1,7 @@
 from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 import torch
-from .net_config import Config
+from .NetConfig import Config
 
 class SongDataset(Dataset):
     def __init__(self, song_tensors, config: Config):

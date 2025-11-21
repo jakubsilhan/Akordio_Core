@@ -5,7 +5,7 @@ from tqdm import tqdm
 import pyrubberband as pyrb
 import os, librosa, shutil, io, torch
 from sklearn.model_selection import KFold
-from .net_config import Config, load_config
+from ..Classes.NetConfig import Config, load_config
 
 class Preprocessor():
     def __init__(self, config: Config):

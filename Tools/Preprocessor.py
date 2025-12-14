@@ -53,7 +53,6 @@ class Preprocessor():
         intervals = self.load_annotation(path, filename)
         shifts = range(self.config.data.preprocess.pitch_shift_start, self.config.data.preprocess.pitch_shift_end+1)
         for shift_factor in shifts:
-            # y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=shift_factor, bins_per_octave=12) # semitone shift -> 12 bins per octave
             if shift_factor != 0:
                 y_shifted = pyrb.pitch_shift(y, sr=sr, n_steps=shift_factor)
             else:
@@ -72,18 +71,13 @@ class Preprocessor():
             save_base = filename.replace(".mp3", "").split("_-_")[-1]
             self.save_fragments(song_df, save_base, fold, shift_factor)
 
-    def process_audio(self, audio: bytes) -> list[torch.Tensor]:
+    def process_audio(self, y: np.ndarray) -> list[torch.Tensor]:
         """
         Processes audio into features according to the config
         """
         
-        # Load audio
-        audio_buffer = io.BytesIO(audio)
-        audio_buffer.seek(0)
-        x, sr = librosa.load(audio_buffer, sr=self.config.data.preprocess.sampling_rate)
-
         # Extract features
-        features,_ = self.process_features(x)
+        features,_ = self.process_features(y)
 
         # Split into fragments
         fragment_size = self.config.data.preprocess.fragment_size
@@ -109,9 +103,6 @@ class Preprocessor():
             features = librosa.feature.chroma_cqt(y=y, sr=self.config.data.preprocess.sampling_rate, bins_per_octave=self.config.data.preprocess.bins_per_octave, hop_length=self.config.data.preprocess.hop_length, n_chroma=self.config.data.preprocess.pcp.bins, n_octaves=self.config.data.preprocess.pcp.octaves)
         else:
             cqt = np.abs(librosa.cqt(y, sr=self.config.data.preprocess.sampling_rate, bins_per_octave=self.config.data.preprocess.bins_per_octave,n_bins=self.config.data.preprocess.cqt_bins, hop_length=self.config.data.preprocess.hop_length))
-            # features = librosa.amplitude_to_db(cqt, ref=np.max)
-            # features = librosa.power_to_db(cqt**2, ref=np.max)
-            # features = np.log(cqt + 1e-6)
             features = cqt
     
         features = features.T
@@ -204,7 +195,7 @@ class Preprocessor():
             os.makedirs(os.path.dirname(song_path), exist_ok=True)
 
             # Save into npz
-            np.savez_compressed(song_path, timestamps=timestamps, X=X, y=y)
+            np.savez_compressed(song_path, timestamps=timestamps, X=X, y=y) # type: ignore
             return
 
         # Fragmenting mode
@@ -213,17 +204,6 @@ class Preprocessor():
         for start in range(0, num_rows, hop_size):
             fragment = song_df.iloc[start:start + self.config.data.preprocess.fragment_size]
 
-            # If fragment is shorter than desired, pad with zeros for features, "N" for chords
-            # if len(fragment) < self.config.data.preprocess.fragment_size:
-            #     pad_len = self.config.data.preprocess.fragment_size - len(fragment)
-            #     pad_features = np.zeros((pad_len, input_dim), dtype=np.float32)
-            #     pad_chords = np.array(["N"] * pad_len)
-            #     fragment_features = fragment.iloc[:, 1:1 + input_dim].values.astype(np.float32)
-            #     fragment_chords = fragment["chord"].values.astype(str)
-            #     X = np.vstack([fragment_features, pad_features])
-            #     y = np.hstack([fragment_chords, pad_chords])
-            #     timestamps = np.concatenate([fragment.iloc[:, 0].values.astype(np.float32), np.zeros(pad_len, dtype=np.float32)])
-            # else:
             if len(fragment) < self.config.data.preprocess.fragment_size:
                 continue
 
@@ -237,7 +217,7 @@ class Preprocessor():
             os.makedirs(os.path.dirname(frag_path), exist_ok=True)
 
             # Save fragment
-            np.savez_compressed(frag_path, timestamps=timestamps, X=X, y=y)
+            np.savez_compressed(frag_path, timestamps=timestamps, X=X, y=y) # type: ignore
 
 
 
@@ -257,32 +237,6 @@ class Preprocessor():
                 labels.append("N")
         
         return np.array(labels)
-    
-    # def assign_labels_to_times(self, times: np.ndarray, intervals: list[tuple[float, float, str]]) -> np.ndarray:
-    #     '''
-    #     Creates an array of chords aligned to CQT frames.
-    #     '''
-    #     hop_length = self.config.data.preprocess.hop_length
-    #     sr = self.config.data.preprocess.sampling_rate
-    #     time_interval = hop_length / sr
-        
-    #     labels = []
-        
-    #     for t in times:
-    #         frame_end = t + time_interval
-    #         best_overlap = 0.0
-    #         best_label = "N"
-            
-    #         # Find chord with maximum overlap
-    #         for start, end, chord in intervals:
-    #             overlap = max(0.0, min(end, frame_end) - max(start, t))
-    #             if overlap > best_overlap:
-    #                 best_overlap = overlap
-    #                 best_label = chord
-            
-    #         labels.append(best_label)
-    
-    #     return np.array(labels)
 
 
     def normalize_note(self, note: str) -> str:

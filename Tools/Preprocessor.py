@@ -56,7 +56,6 @@ class Preprocessor():
         intervals = self.load_annotation(path, filename)
         shifts = range(self.config.data.preprocess.pitch_shift_start, self.config.data.preprocess.pitch_shift_end+1)
         for shift_factor in shifts:
-            # y_shifted = librosa.effects.pitch_shift(y, sr=sr, n_steps=shift_factor, bins_per_octave=12) # semitone shift -> 12 bins per octave
             if shift_factor != 0:
                 y_shifted = pyrb.pitch_shift(y, sr=sr, n_steps=shift_factor)
             else:
@@ -75,18 +74,13 @@ class Preprocessor():
             save_base = filename.replace(".mp3", "").split("_-_")[-1]
             self.save_fragments(song_df, save_base, fold, shift_factor)
 
-    def process_audio(self, audio: bytes) -> list[torch.Tensor]:
+    def process_audio(self, y: np.ndarray) -> list[torch.Tensor]:
         """
         Processes audio into features according to the config
         """
         
-        # Load audio
-        audio_buffer = io.BytesIO(audio)
-        audio_buffer.seek(0)
-        x, sr = librosa.load(audio_buffer, sr=self.config.data.preprocess.sampling_rate)
-
         # Extract features
-        features,_ = self.process_features(x)
+        features,_ = self.process_features(y)
 
         # Split into fragments
         fragment_size = self.config.data.preprocess.fragment_size

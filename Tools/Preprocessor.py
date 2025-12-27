@@ -32,6 +32,7 @@ class Preprocessor():
             for filename in files:
                 all_files.append((path, filename))
 
+        all_files.sort()
         kf = KFold(self.config.data.preprocess.num_splits, shuffle=True, random_state=self.config.base.random_seed)
         fold_pbar = tqdm(total=self.config.data.preprocess.num_splits, desc="Generating folds")
         for fold, (_, fold_indices) in enumerate(kf.split(all_files)):

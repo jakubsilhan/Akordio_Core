@@ -6,10 +6,12 @@ import pyrubberband as pyrb
 import os, librosa, shutil, io, torch
 from sklearn.model_selection import KFold
 from ..Classes.NetConfig import Config, load_config
+from Akordio_Core.Tools.Chords import Chords, Complexity
 
 class Preprocessor():
     def __init__(self, config: Config):
         self.config = config
+        self.chord_tool = Chords()
 
     def process_all_data(self) -> None:
         '''
@@ -32,6 +34,7 @@ class Preprocessor():
             for filename in files:
                 all_files.append((path, filename))
 
+        all_files.sort()
         kf = KFold(self.config.data.preprocess.num_splits, shuffle=True, random_state=self.config.base.random_seed)
         fold_pbar = tqdm(total=self.config.data.preprocess.num_splits, desc="Generating folds")
         for fold, (_, fold_indices) in enumerate(kf.split(all_files)):
@@ -109,9 +112,6 @@ class Preprocessor():
             features = librosa.feature.chroma_cqt(y=y, sr=self.config.data.preprocess.sampling_rate, bins_per_octave=self.config.data.preprocess.bins_per_octave, hop_length=self.config.data.preprocess.hop_length, n_chroma=self.config.data.preprocess.pcp.bins, n_octaves=self.config.data.preprocess.pcp.octaves)
         else:
             cqt = np.abs(librosa.cqt(y, sr=self.config.data.preprocess.sampling_rate, bins_per_octave=self.config.data.preprocess.bins_per_octave,n_bins=self.config.data.preprocess.cqt_bins, hop_length=self.config.data.preprocess.hop_length))
-            # features = librosa.amplitude_to_db(cqt, ref=np.max)
-            # features = librosa.power_to_db(cqt**2, ref=np.max)
-            # features = np.log(cqt + 1e-6)
             features = cqt
     
         features = features.T
@@ -196,7 +196,8 @@ class Preprocessor():
             # Extract into numpy arrays
             timestamps = song_df.iloc[:, 0].values.astype(np.float64)
             X = song_df.iloc[:, 1:1 + input_dim].values.astype(np.float64) # skip timestamp
-            y = song_df["chord"].values.astype(str)
+            raw_chords = song_df["chord"].values
+            encoded_dict = self._encode_chords(raw_chords)
 
             # Prepare pathing
             song_filename = f"{base_name}_shift{shift_factor:02d}.npz"
@@ -204,7 +205,7 @@ class Preprocessor():
             os.makedirs(os.path.dirname(song_path), exist_ok=True)
 
             # Save into npz
-            np.savez_compressed(song_path, timestamps=timestamps, X=X, y=y)
+            np.savez_compressed(song_path, timestamps=timestamps, X=X, **encoded_dict) # type: ignore
             return
 
         # Fragmenting mode
@@ -213,22 +214,12 @@ class Preprocessor():
         for start in range(0, num_rows, hop_size):
             fragment = song_df.iloc[start:start + self.config.data.preprocess.fragment_size]
 
-            # If fragment is shorter than desired, pad with zeros for features, "N" for chords
-            # if len(fragment) < self.config.data.preprocess.fragment_size:
-            #     pad_len = self.config.data.preprocess.fragment_size - len(fragment)
-            #     pad_features = np.zeros((pad_len, input_dim), dtype=np.float32)
-            #     pad_chords = np.array(["N"] * pad_len)
-            #     fragment_features = fragment.iloc[:, 1:1 + input_dim].values.astype(np.float32)
-            #     fragment_chords = fragment["chord"].values.astype(str)
-            #     X = np.vstack([fragment_features, pad_features])
-            #     y = np.hstack([fragment_chords, pad_chords])
-            #     timestamps = np.concatenate([fragment.iloc[:, 0].values.astype(np.float32), np.zeros(pad_len, dtype=np.float32)])
-            # else:
             if len(fragment) < self.config.data.preprocess.fragment_size:
                 continue
 
             X = fragment.iloc[:, 1:1 + input_dim].values.astype(np.float64)
-            y = fragment["chord"].values.astype(str)
+            raw_chords = fragment["chord"].values
+            encoded_dict = self._encode_chords(raw_chords)
             timestamps = fragment.iloc[:, 0].values.astype(np.float64)
 
             # Prepare path
@@ -237,7 +228,7 @@ class Preprocessor():
             os.makedirs(os.path.dirname(frag_path), exist_ok=True)
 
             # Save fragment
-            np.savez_compressed(frag_path, timestamps=timestamps, X=X, y=y)
+            np.savez_compressed(frag_path, timestamps=timestamps, X=X, **encoded_dict) # type: ignore
 
 
 
@@ -257,33 +248,6 @@ class Preprocessor():
                 labels.append("N")
         
         return np.array(labels)
-    
-    # def assign_labels_to_times(self, times: np.ndarray, intervals: list[tuple[float, float, str]]) -> np.ndarray:
-    #     '''
-    #     Creates an array of chords aligned to CQT frames.
-    #     '''
-    #     hop_length = self.config.data.preprocess.hop_length
-    #     sr = self.config.data.preprocess.sampling_rate
-    #     time_interval = hop_length / sr
-        
-    #     labels = []
-        
-    #     for t in times:
-    #         frame_end = t + time_interval
-    #         best_overlap = 0.0
-    #         best_label = "N"
-            
-    #         # Find chord with maximum overlap
-    #         for start, end, chord in intervals:
-    #             overlap = max(0.0, min(end, frame_end) - max(start, t))
-    #             if overlap > best_overlap:
-    #                 best_overlap = overlap
-    #                 best_label = chord
-            
-    #         labels.append(best_label)
-    
-    #     return np.array(labels)
-
 
     def normalize_note(self, note: str) -> str:
         '''
@@ -304,6 +268,28 @@ class Preprocessor():
             return flat_to_sharp[note]
         return note
     
+    def _encode_chords(self, raw_chords):
+        """
+        Creates multiple different label encodings according to complexity
+        """
+        y_majmin = []
+        y_majmin7 = []
+        y_complex = []
+        
+        for chord in raw_chords:
+            # Pre-calculate all three versions
+            y_majmin.append(self.chord_tool.encode(
+                self.chord_tool.reduce(chord, Complexity.MAJMIN), Complexity.MAJMIN))
+            y_majmin7.append(self.chord_tool.encode(
+                self.chord_tool.reduce(chord, Complexity.MAJMIN7), Complexity.MAJMIN7))
+            y_complex.append(self.chord_tool.encode(
+                self.chord_tool.reduce(chord, Complexity.COMPLEX), Complexity.COMPLEX))
+                
+        return {
+            "y_majmin": np.array(y_majmin, dtype=np.int32),
+            "y_majmin7": np.array(y_majmin7, dtype=np.int32),
+            "y_complex": np.array(y_complex, dtype=np.int32)
+        }
 
 # if __name__ == "__main__":
 #     config = load_config("config.yaml")

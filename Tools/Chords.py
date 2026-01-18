@@ -1,5 +1,6 @@
 import numpy as np
 from enum import Enum
+from typing import Tuple
 
 PITCH_CLASS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 MAJMIN = ["maj", "min"]
@@ -75,6 +76,51 @@ class Chords:
                     return self.majmin_encodings.index(chord)
         except ValueError:
             return 0
+        
+    def encode_multi(self, chord: str, type:Complexity)->Tuple[int, int, int]:
+        '''
+        Encodes a chord string into a numeric tuple
+
+        Parameters
+        ----------
+        chord : str
+            A string representing a chord (e.g. G:maj)
+        type : Complexity
+            An enum representing which type of chord encodings is expected
+
+        Returns
+        -------
+        chord_tuple : Tuple
+            An encoded chord into numeric tuple [chord, root, quality]
+        '''
+        try:
+            chord_num = 0
+            chord_root = 0
+            chord_quality = 0
+            match type:
+                case Complexity.COMPLEX:
+                    chord_num = self.complex_encodings.index(chord)
+                case Complexity.MAJMIN7:
+                    chord_num = self.majmin7_encodings.index(chord)
+                case default:
+                    chord_num = self.majmin_encodings.index(chord)
+
+            if chord == "N":
+                return (chord_num, 12, 14) # No chord indices
+            
+            if ":" in chord:
+                root, quality = chord.split(":", 1)
+            else:
+                root = chord
+                quality = "maj"
+
+            chord_root = PITCH_CLASS.index(root)
+            chord_quality = COMPLEX.index(quality)
+
+            return (chord_num, chord_root, chord_quality)
+        except Exception as e:
+            return (0, 12, 14) # No chord indices
+
         
     def decode(self, number: int, type: Complexity) -> str:
         '''

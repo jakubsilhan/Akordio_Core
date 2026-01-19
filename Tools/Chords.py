@@ -13,6 +13,9 @@ class Complexity(Enum):
     COMPLEX = 3
 
 class Chords:
+    """
+    Class for chord encoding and decoding
+    """
     
     def __init__(self):
         self.pitches = {

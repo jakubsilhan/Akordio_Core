@@ -37,15 +37,12 @@ class ModelConfig(BaseModel):
     epoch_count: int
     learning_rate: float
     weight_decay: float
-    scheduler_step: int
-    scheduler_gamma: float
-    normalization: bool
 
 class TrainConfig(BaseModel):
     data_source: str
     model_path: str
     model_name: str
-    test_fold: int
+    val_fold: int
     model_type: str
     model_complexity: str
     checkpoint_interval: int

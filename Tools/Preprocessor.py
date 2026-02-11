@@ -4,7 +4,7 @@ import warnings
 from tqdm import tqdm
 import pyrubberband as pyrb
 import os, librosa, shutil, io, torch
-from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold, train_test_split
 from ..Classes.NetConfig import Config, load_config
 
 class Preprocessor():
@@ -33,19 +33,37 @@ class Preprocessor():
                 all_files.append((path, filename))
 
         all_files.sort()
+
+        # Train/Test split
+        train_files, test_files = train_test_split(
+            all_files, 
+            test_size=self.config.data.preprocess.test_split, 
+            random_state=self.config.base.random_seed,
+            shuffle=True
+        )
+
+        # Test set
+        test_path = os.path.join(self.config.data.preprocessed_dir, "test", "0")
+        os.makedirs(test_path, exist_ok=True)
+        for path, filename in tqdm(test_files, desc="Processing test set"):
+            self.process_song(path, filename, test_path)
+
+        # Training set with K-Fold
         kf = KFold(self.config.data.preprocess.num_splits, shuffle=True, random_state=self.config.base.random_seed)
+        train_path = os.path.join(self.config.data.preprocessed_dir, "train")
+        os.makedirs(train_path, exist_ok=True)
         fold_pbar = tqdm(total=self.config.data.preprocess.num_splits, desc="Generating folds")
-        for fold, (_, fold_indices) in enumerate(kf.split(all_files)):
-            fold_path = os.path.join(self.config.data.preprocessed_dir, str(fold))
+        for fold, (_, fold_indices) in enumerate(kf.split(train_files)):
+            fold_path = os.path.join(train_path, str(fold))
             if not os.path.exists(fold_path):
                 os.makedirs(fold_path)
-            fold_files = [all_files[idx] for idx in fold_indices]
+            fold_files = [train_files[idx] for idx in fold_indices]
             for path, filename in tqdm(fold_files, desc="Processing fold songs"):
-                self.process_song(path, filename, fold)
+                self.process_song(path, filename, fold_path)
             fold_pbar.update(1)
         fold_pbar.close()
 
-    def process_song(self, path: str, filename: str, fold: int) -> None:
+    def process_song(self, path: str, filename: str, out_path: str) -> None:
         '''
         Processes a song and applies pitch shifting aswell if needed
         '''
@@ -70,7 +88,7 @@ class Preprocessor():
 
             # Saving
             save_base = filename.replace(".mp3", "").split("_-_")[-1]
-            self.save_fragments(song_df, save_base, fold, shift_factor)
+            self.save_fragments(song_df, save_base, out_path, shift_factor)
 
     def process_audio(self, y: np.ndarray) -> list[torch.Tensor]:
         """
@@ -174,7 +192,7 @@ class Preprocessor():
         return note_list[new_idx]+":"+type_name
 
     # Utils
-    def save_fragments(self, song_df: pd.DataFrame, base_name: str, fold: int, shift_factor: int) -> None:
+    def save_fragments(self, song_df: pd.DataFrame, base_name: str, out_path: str, shift_factor: int) -> None:
         '''
         Splits the song dataframe into fixed-size fragments (in frames) and saves them as individual npz files
         '''
@@ -192,7 +210,7 @@ class Preprocessor():
 
             # Prepare pathing
             song_filename = f"{base_name}_shift{shift_factor:02d}.npz"
-            song_path = os.path.join(self.config.data.preprocessed_dir, str(fold), song_filename)
+            song_path = os.path.join(out_path, song_filename)
             os.makedirs(os.path.dirname(song_path), exist_ok=True)
 
             # Save into npz
@@ -214,7 +232,7 @@ class Preprocessor():
 
             # Prepare path
             frag_filename = f"{base_name}_shift{shift_factor:02d}_frag{start//hop_size:04d}.npz"
-            frag_path = os.path.join(self.config.data.preprocessed_dir, str(fold), frag_filename)
+            frag_path = os.path.join(out_path, frag_filename)
             os.makedirs(os.path.dirname(frag_path), exist_ok=True)
 
             # Save fragment

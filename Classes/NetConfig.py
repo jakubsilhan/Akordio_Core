@@ -8,6 +8,7 @@ class PCPConfig(BaseModel):
 
 class PreprocessingConfig(BaseModel):
     pcp: PCPConfig
+    test_split: float
     num_splits: int
     bins_per_octave: int
     cqt_bins: int
@@ -36,6 +37,7 @@ class ModelConfig(BaseModel):
     loss_patience: int
     epoch_count: int
     learning_rate: float
+    loss_delta: float
     weight_decay: float
 
 class TrainConfig(BaseModel):

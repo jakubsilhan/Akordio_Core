@@ -56,18 +56,6 @@ class Chords:
     def encode(self, chord: str, type: Complexity) -> int:
         '''
         Encodes a chord string into a numeric value
-
-        Parameters
-        ----------
-        chord : str
-            A string representing a chord (e.g. G:maj)
-        type : Complexity
-            An enum representing which type of chord encodings is expected
-
-        Returns
-        -------
-        chord_number : int
-            An encoded chord into a numeric value
         '''
         try:
             match type:
@@ -75,7 +63,7 @@ class Chords:
                     return self.complex_encodings.index(chord)
                 case Complexity.MAJMIN7:
                     return self.majmin7_encodings.index(chord)
-                case default:
+                case _:
                     return self.majmin_encodings.index(chord)
         except ValueError:
             return 0
@@ -83,18 +71,6 @@ class Chords:
     def encode_multi(self, chord: str, type:Complexity)->Tuple[int, int, int]:
         '''
         Encodes a chord string into a numeric tuple
-
-        Parameters
-        ----------
-        chord : str
-            A string representing a chord (e.g. G:maj)
-        type : Complexity
-            An enum representing which type of chord encodings is expected
-
-        Returns
-        -------
-        chord_tuple : Tuple
-            An encoded chord into numeric tuple [chord, root, quality]
         '''
         try:
             chord_num = 0
@@ -105,7 +81,7 @@ class Chords:
                     chord_num = self.complex_encodings.index(chord)
                 case Complexity.MAJMIN7:
                     chord_num = self.majmin7_encodings.index(chord)
-                case default:
+                case _:
                     chord_num = self.majmin_encodings.index(chord)
 
             if chord == "N":
@@ -128,18 +104,6 @@ class Chords:
     def decode(self, number: int, type: Complexity) -> str:
         '''
         Decodes a chord string from a numeric value
-
-        Parameters
-        ----------
-        number : int
-            A number representing an encoded chord
-        type : Complexity
-            An enum representing which type of chord encodings is expected
-
-        Returns
-        -------
-        chord : str
-            A string of the decoded chord
         '''
         try:
             match type:
@@ -147,26 +111,14 @@ class Chords:
                     return self.complex_encodings[number]
                 case Complexity.MAJMIN7:
                     return self.majmin7_encodings[number]
-                case default:
+                case _:
                     return self.majmin_encodings[number]
         except IndexError:
             return "N"
 
     def _generate_encodings(self, pitch_classes: list, qualities: list) -> list:
         '''
-        Reduces encoding list for pitch classes and qualities
-
-        Parameters
-        ----------
-        pitch_classes : list
-            List of pitch qualities to base encodings on
-        qualities : list
-            List of qualities to base encodings on
-
-        Returns
-        -------
-        chords : list
-            List of all possible pitch-quality combinations
+        Produces encoding list for pitch classes and qualities
         '''
         chords = []
         chords.append("N")
@@ -176,28 +128,34 @@ class Chords:
         return chords
 
     # Reduction methods
+    def _normalize_chord(self, chord: str) -> str:
+        """
+        Remove bass interval and parenthetical extensions
+        """
+        # Remove bass interval
+        if '/' in chord:
+            chord = chord.split('/')[0]
+        
+        # Remove extensions in parentheses
+        if '(' in chord:
+            chord = chord[:chord.find('(')]
+        
+        return chord
+    
     def reduce(self, chord: str, complexity: Complexity) -> str:
+        chord = self._normalize_chord(chord)
+
         match complexity:
             case Complexity.COMPLEX:
                 return self.complex(chord)
             case Complexity.MAJMIN7:
                 return self.majmin7(chord)
-            case default:
+            case _:
                 return self.majmin(chord)
 
     def majmin(self, chord: str) -> str:
         '''
         Reduces a chord label to its root and basic quality: maj or min.
-
-        Parameters
-        ----------
-        chord : str
-            e.g. "C:min7", "D:maj13"
-
-        Returns
-        -------
-        reduced_chord : str
-            e.g. "C:min" or "D:maj"
         '''
         root, pitch_classes = self.deconstruct_chord(chord)
 
@@ -213,16 +171,6 @@ class Chords:
     def majmin7(self, chord: str) -> str:
         '''
         Reduces a chord label to maj, min, 7, maj7, or min7 based on its interval content.
-
-        Parameters
-        ----------
-        chord : str
-            e.g. "C:maj13", "D:min9", "G:7"
-
-        Returns
-        -------
-        reduced_chord : str
-            e.g. "C:maj7", "D:min7", "G:7"
         '''
         root, pitch_classes = self.deconstruct_chord(chord)
 
@@ -253,18 +201,7 @@ class Chords:
     
     def complex(self, chord: str) -> str:
         '''
-        Reduces a chord label to one of the canonical COMPLEX chord types
-        based on its interval content.
-
-        Parameters
-        ----------
-        chord : str
-            e.g. "C:maj13", "D:min9", "G:dim7"
-
-        Returns
-        -------
-        reduced_chord : str
-            e.g. "C:maj7", "D:min7", "G:dim7"
+        Reduces a chord label to one of the canonical COMPLEX chord types based on its interval content.
         '''
         root, pc = self.deconstruct_chord(chord)
 
@@ -315,22 +252,12 @@ class Chords:
         elif m3:
             return f"{root}:min"
         else:
-            return f"X"  # Uknown
+            return f"X" # Uknown
 
     # Interval methods
     def deconstruct_chord(self, chord: str) -> tuple:
         '''
         Splits a chord into its root and intervals
-
-        Parameters
-        ----------
-        chord : str
-            Chord label as a string
-
-        Returns
-        -------
-        deconstructed chord : tuple
-            A tuple containing the root and binary pitch class vector
         '''
         if chord=="N":
             return ("N", None)
@@ -344,20 +271,7 @@ class Chords:
 
     def interval_list(self, intervals_str: str):
         """
-        Convert a list of intervals given as string to a binary pitch class
-        representation. For example, '1, 3, 5' would become
-        [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0].
-
-        Parameters
-        ----------
-        intervals_str : str
-            List of intervals as comma-separated string (e.g. '1, 3, 5').
-
-        Returns
-        -------
-        pitches : numpy array
-            Binary pitch class representation of chord intervals
-
+        Convert a list of intervals given as string to a binary pitch class representation: '1, 3, 5' -> [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0]
         """
 
         # Clean and split the input string

@@ -104,13 +104,13 @@ class Preprocessor():
 
         # Return with no fragmenting
         if fragment_size == 0:
-            fragments.append(torch.tensor(features, dtype=torch.float64))
+            fragments.append(torch.tensor(features, dtype=torch.float32))
             return fragments
         
         # Fragment
         for start in range(0, len(features), fragment_size):
             fragment = features[start:start+fragment_size]
-            fragments.append(torch.tensor(fragment, dtype=torch.float64))
+            fragments.append(torch.tensor(fragment, dtype=torch.float32))
         
         return fragments
 
@@ -155,41 +155,44 @@ class Preprocessor():
         return shifted
 
     def shift_root(self, chord: str, semitone_shift: int) -> str:
-        '''
-        Shifts the label root according to the shift factor
-        '''
-        # TODO consider keeping the bass and adds (not used for now)
-        root, type_name, adds, bass = chord, '', [], ''
-
         note_list = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+        
         if 'N' in chord:
             return 'N'
-
-        if '/' in chord:
-            chord, bass = chord.split("/")
-            root = chord
         
-        if '(' in chord:
-            adds = chord[chord.find('(') + 1:chord.find(')')].split(',')
-            chord = chord[:chord.find('(')] + chord[chord.find(')') + 1:]
-            root = chord
+        extensions = ""
+        bass_interval = ""
 
+        # Bass
+        if '/' in chord:
+            chord, bass_interval = chord.split("/", 1)
+            bass_interval = "/" + bass_interval
+        
+        # Extensions
+        if '(' in chord:
+            extensions = chord[chord.find('('):]
+            chord = chord[:chord.find('(')]
+
+        # Parse root and quality
         if ':' in chord:
-            root, type_name = chord.split(':', maxsplit=1)
-            if type_name == '':
-                type_name = 'maj'
+            root, quality = chord.split(':', 1)
         elif len(chord) >= 2 and chord[1] in ['b', '#']:
             root = chord[:2]
-            type_name = chord[2:]
+            quality = chord[2:] if len(chord) > 2 else 'maj'
         else:
             root = chord[:1]
-            type_name = 'maj'
-
+            quality = chord[1:] if len(chord) > 1 else 'maj'
+        
+        # Shift only the root
         root_note = self.normalize_note(root)
         idx = note_list.index(root_note)
         new_idx = (idx + semitone_shift) % 12
-
-        return note_list[new_idx]+":"+type_name
+        shifted_root = note_list[new_idx]
+        
+        # Reconstruct chord
+        result = f"{shifted_root}:{quality}{extensions}{bass_interval}"
+        
+        return result
 
     # Utils
     def save_fragments(self, song_df: pd.DataFrame, base_name: str, out_path: str, shift_factor: int) -> None:
@@ -204,8 +207,8 @@ class Preprocessor():
         # Full song mode
         if self.config.data.preprocess.fragment_size <= 0:
             # Extract into numpy arrays
-            timestamps = song_df.iloc[:, 0].values.astype(np.float64)
-            X = song_df.iloc[:, 1:1 + input_dim].values.astype(np.float64) # skip timestamp
+            timestamps = song_df.iloc[:, 0].values.astype(np.float32)
+            X = song_df.iloc[:, 1:1 + input_dim].values.astype(np.float32) # skip timestamp
             y = song_df["chord"].values.astype(str)
 
             # Prepare pathing
@@ -226,9 +229,9 @@ class Preprocessor():
             if len(fragment) < self.config.data.preprocess.fragment_size:
                 continue
 
-            X = fragment.iloc[:, 1:1 + input_dim].values.astype(np.float64)
+            X = fragment.iloc[:, 1:1 + input_dim].values.astype(np.float32)
             y = fragment["chord"].values.astype(str)
-            timestamps = fragment.iloc[:, 0].values.astype(np.float64)
+            timestamps = fragment.iloc[:, 0].values.astype(np.float32)
 
             # Prepare path
             frag_filename = f"{base_name}_shift{shift_factor:02d}_frag{start//hop_size:04d}.npz"
@@ -242,20 +245,26 @@ class Preprocessor():
 
     def assign_labels_to_times(self, times, intervals) -> np.ndarray:
         '''
-        Creates an array of chord alligned to specific timings
+        Creates an array of chord aligned to specific timings
         '''
-        labels = []
-        for t in times:
-            found = False
-            for start, end, chord in intervals:
-                if start <= t and t < end:
-                    labels.append(chord)
-                    found = True
-                    break
-            if not found:
-                labels.append("N")
+        if len(intervals) == 0:
+            return np.full(len(times), "N", dtype=object)
         
-        return np.array(labels)
+        # Vectorization
+        starts = np.array([i[0] for i in intervals])
+        ends = np.array([i[1] for i in intervals])
+        chords = np.array([i[2] for i in intervals])
+        
+        # Find fitting timestamps
+        indices = np.searchsorted(starts, times, side='right') - 1
+        
+        # Check if times fall within <start, end) of their assigned interval
+        valid = (indices >= 0) & (times < ends[np.clip(indices, 0, len(ends)-1)])
+        
+        # Assign labels
+        labels = np.where(valid, chords[indices], "N")
+        
+        return labels
 
 
     def normalize_note(self, note: str) -> str:

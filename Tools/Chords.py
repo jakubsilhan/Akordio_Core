@@ -126,6 +126,15 @@ class Chords:
             for quality in qualities:
                 chords.append(f"{pitch}:{quality}")
         return chords
+    
+    def get_labels(self, complexity: Complexity) -> list:
+        match complexity:
+            case Complexity.COMPLEX:
+                return self.complex_encodings
+            case Complexity.MAJMIN7:
+                return self.majmin7_encodings
+            case _:
+                return self.majmin_encodings
 
     # Reduction methods
     def _normalize_chord(self, chord: str) -> str:

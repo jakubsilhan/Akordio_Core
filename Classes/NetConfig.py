@@ -42,7 +42,6 @@ class ModelConfig(BaseModel):
 
 class TrainConfig(BaseModel):
     data_source: str
-    model_path: str
     model_name: str
     val_fold: int
     model_type: str
